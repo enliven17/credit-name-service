@@ -1,0 +1,1378 @@
+"use client";
+
+import styled from 'styled-components';
+import { useState, useEffect, useRef } from 'react';
+import { FaSearch, FaUser, FaWallet, FaSignOutAlt, FaGlobe, FaCheck, FaTimes, FaPaperPlane, FaInbox } from 'react-icons/fa';
+import { createNoise3D } from "simplex-noise";
+import { useWallet } from '@/contexts/WalletContext';
+import { domainService, Domain as SupabaseDomain } from '@/lib/supabase';
+import { getCreditContract } from '@/lib/contract';
+import { DomainTransfer } from '@/components/DomainTransfer';
+import { useNotification } from '@/components/Notification';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
+
+// Scramble animation hook
+const useScrambleText = (text: string, duration: number = 2000) => {
+  const [displayText, setDisplayText] = useState('');
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const scrambleChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+  const startAnimation = () => {
+    setIsAnimating(true);
+    const startTime = Date.now();
+    const textLength = text.length;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      let result = '';
+      for (let i = 0; i < textLength; i++) {
+        if (text[i] === ' ') {
+          result += ' ';
+          continue;
+        }
+
+        // Each character reveals progressively from left to right
+        const charProgress = Math.max(0, Math.min(1, (progress * 1.5) - (i / textLength) * 0.5));
+        
+        if (charProgress >= 0.8) {
+          result += text[i];
+        } else if (charProgress > 0.2) {
+          // Mix of correct character and random characters
+          const shouldShowCorrect = Math.random() < (charProgress - 0.2) / 0.6;
+          if (shouldShowCorrect) {
+            result += text[i];
+          } else {
+            // Use similar character types for better visual effect
+            const isUpperCase = text[i] >= 'A' && text[i] <= 'Z';
+            const isLowerCase = text[i] >= 'a' && text[i] <= 'z';
+            const isNumber = text[i] >= '0' && text[i] <= '9';
+            
+            let charSet = scrambleChars;
+            if (isUpperCase) charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            else if (isLowerCase) charSet = 'abcdefghijklmnopqrstuvwxyz';
+            else if (isNumber) charSet = '0123456789';
+            
+            result += charSet[Math.floor(Math.random() * charSet.length)];
+          }
+        } else {
+          result += scrambleChars[Math.floor(Math.random() * scrambleChars.length)];
+        }
+      }
+
+      setDisplayText(result);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setDisplayText(text);
+        setIsAnimating(false);
+      }
+    };
+
+    animate();
+  };
+
+  return { displayText, startAnimation, isAnimating };
+};
+
+// Scramble Text Component
+const ScrambleText: React.FC<{ text: string; delay?: number; duration?: number }> = ({ 
+  text, 
+  delay = 500, 
+  duration = 2000 
+}) => {
+  const { displayText, startAnimation } = useScrambleText(text, duration);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [opacity, setOpacity] = useState(0);
+
+  useEffect(() => {
+    // Fade in first
+    const fadeTimer = setTimeout(() => {
+      setOpacity(1);
+    }, delay - 200);
+
+    // Then start scramble
+    const scrambleTimer = setTimeout(() => {
+      if (!hasStarted) {
+        startAnimation();
+        setHasStarted(true);
+      }
+    }, delay);
+
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(scrambleTimer);
+    };
+  }, [delay, startAnimation, hasStarted]);
+
+  return (
+    <span style={{ 
+      opacity, 
+      transition: 'opacity 0.5s ease-in-out',
+      display: 'inline-block',
+      whiteSpace: 'pre-wrap'
+    }}>
+      {displayText || text}
+    </span>
+  );
+};
+
+// Domain types
+interface DomainSearchResult {
+  name: string;
+  available: boolean;
+  price: string;
+}
+
+const PageContainer = styled.div`
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: black;
+  padding: 20px;
+  padding-bottom: 80px;
+`;
+
+const Canvas = styled.canvas`
+  position: fixed;
+  top: 0;
+  left: -100px;
+  width: calc(100vw + 200px);
+  height: 100vh;
+  z-index: 0;
+`;
+
+const GlassCard = styled.div`
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 48px 40px;
+  max-width: 520px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+`;
+
+const Header = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 40px;
+  text-align: center;
+`;
+
+const Title = styled.h1`
+  font-size: 2.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+  min-height: 1.2em;
+`;
+
+const Subtitle = styled.p`
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 40px 0;
+  text-align: center;
+  min-height: 1.5em;
+`;
+
+const SearchContainer = styled.div`
+  width: 100%;
+  margin-bottom: 32px;
+`;
+
+const SearchBox = styled.div`
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  padding: 16px 20px;
+  transition: all 0.3s ease;
+  width: 100%;
+  max-width: 100%;
+  
+  &:focus-within {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.15);
+  }
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 500;
+  min-width: 0;
+  
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 1rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1rem;
+    
+    &::placeholder {
+      font-size: 0.9rem;
+    }
+  }
+`;
+
+const DomainExtension = styled.span`
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin-left: 4px;
+  flex-shrink: 0;
+  
+  @media (max-width: 480px) {
+    font-size: 1rem;
+  }
+`;
+
+const SearchButton = styled.button`
+  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 10px;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  min-width: 65px;
+  max-width: 65px;
+  flex-shrink: 0;
+  justify-content: center;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  @media (max-width: 480px) {
+    min-width: 55px;
+    max-width: 55px;
+    padding: 12px 8px;
+    font-size: 0.75rem;
+    margin-left: 6px;
+  }
+`;
+
+const DomainResult = styled.div`
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
+  }
+`;
+
+const DomainHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+`;
+
+const DomainName = styled.h3`
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const AvailabilityBadge = styled.div<{ $available: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: ${props => props.$available ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};
+  color: ${props => props.$available ? '#22c55e' : '#ef4444'};
+  border: 1px solid ${props => props.$available ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'};
+`;
+
+const DomainInfo = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+`;
+
+const PriceInfo = styled.div`
+  text-align: right;
+`;
+
+const Price = styled.div`
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: white;
+`;
+
+const PriceLabel = styled.div`
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+`;
+
+const RegisterButton = styled.button`
+  width: 100%;
+  padding: 16px 0;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    background: rgba(255, 255, 255, 0.2);
+  }
+`;
+
+const WalletButton = styled.button`
+  width: 100%;
+  padding: 20px 0;
+  margin-top: 16px;
+  border: none;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  color: white;
+  font-size: 1.3rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const WalletModal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const WalletModalContent = styled.div`
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 32px;
+  max-width: 400px;
+  width: 90%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+`;
+
+const WalletModalTitle = styled.h3`
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 24px 0;
+  text-align: center;
+`;
+
+const WalletSelector = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const WalletOption = styled.button`
+  width: 100%;
+  padding: 16px 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+  }
+`;
+
+const CloseButton = styled.button`
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+`;
+
+const NetworkWarning = styled.div`
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  color: #ffc107;
+  font-size: 0.9rem;
+  text-align: center;
+`;
+
+const DevnetBanner = styled.div`
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: #ffc107;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const NetworkButton = styled.button`
+  background: linear-gradient(135deg, #ffc107 0%, #ff8c00 100%);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+  }
+`;
+
+const DisconnectButton = styled.button`
+  width: 100%;
+  padding: 16px 0;
+  margin-top: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+  }
+`;
+
+const BottomNavigation = styled.div`
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 25px;
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 100;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  min-width: 200px;
+  max-width: 300px;
+`;
+
+const NavItem = styled.div<{ $active?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: ${props => props.$active ? 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)' : 'transparent'};
+  min-width: 60px;
+  
+  &:hover {
+    background: ${props => props.$active ? 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)' : 'rgba(255, 255, 255, 0.1)'};
+    transform: translateY(-2px);
+  }
+`;
+
+const NavText = styled.span<{ $active?: boolean }>`
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: ${props => props.$active ? 'white' : 'rgba(255, 255, 255, 0.7)'};
+  transition: all 0.3s ease;
+  text-align: center;
+`;
+
+const SearchView = styled.div`
+  width: 100%;
+  animation: fadeIn 0.2s ease-in-out;
+`;
+
+const ProfileView = styled.div`
+  width: 100%;
+  animation: fadeIn 0.2s ease-in-out;
+`;
+
+const ProfileTitle = styled.h3`
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: white;
+  margin: 0 0 8px 0;
+`;
+
+const ProfileSubtitle = styled.p`
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 32px 0;
+`;
+
+const DomainList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`;
+
+const DomainCard = styled.div`
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
+  }
+`;
+
+const DomainCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+`;
+
+const DomainCardName = styled.h4`
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+`;
+
+const DomainStatus = styled.span<{ status: 'active' | 'expired' }>`
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: ${props => props.status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};
+  color: ${props => props.status === 'active' ? '#22c55e' : '#ef4444'};
+  border: 1px solid ${props => props.status === 'active' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'};
+`;
+
+const DomainCardInfo = styled.div`
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 12px;
+`;
+
+const DomainActions = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const ActionButton = styled.button`
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: #3b82f6;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  &:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.5);
+  }
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+`;
+
+const EmptyStateIcon = styled.div`
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+`;
+
+const EmptyStateText = styled.p`
+  font-size: 1rem;
+  margin: 0;
+`;
+
+const ErrorMessage = styled.div`
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: #ef4444;
+  font-size: 0.9rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease-in-out;
+`;
+
+// Add keyframes for animations
+const GlobalStyle = styled.div`
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+`;
+
+export default function Home() {
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResult, setSearchResult] = useState<DomainSearchResult | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [userDomains, setUserDomains] = useState<SupabaseDomain[]>([]);
+  const [activeTab, setActiveTab] = useState('search');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [transferDomain, setTransferDomain] = useState<SupabaseDomain | null>(null);
+  const [transferHistory, setTransferHistory] = useState<any[]>([]);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+  const [devnetIssue, setDevnetIssue] = useState(false);
+
+  const { showSuccess, showError, showWarning, NotificationContainer } = useNotification();
+
+  const { isConnected, address, connect, disconnect, isLoading } = useWallet();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Load user domains when wallet connects
+  useEffect(() => {
+    if (isConnected && address) {
+      loadUserDomains();
+      loadTransferHistory();
+    }
+  }, [isConnected, address]);
+
+  // Show devnet congestion warning if registration takes too long
+  useEffect(() => {
+    let timer: any;
+    if (isRegistering) {
+      timer = setTimeout(() => {
+        setDevnetIssue(true);
+        setIsRegistering(false); // exit waiting state after warning
+        showWarning('Network Delay', 'The network may be congested. Your transaction might take longer than usual.');
+      }, 30000); // 30s
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isRegistering, showWarning]);
+
+  // Domain search function
+  const searchDomain = async (): Promise<void> => {
+    const trimmedQuery = searchQuery.trim();
+    
+    if (!trimmedQuery) return;
+    
+    // Clear previous error
+    setErrorMessage('');
+    
+    // Check minimum length
+    if (trimmedQuery.length < 3) {
+      setErrorMessage('Domain name must be at least 3 characters long');
+      return;
+    }
+    
+    // Check for valid characters (alphanumeric and hyphens)
+    const validPattern = /^[a-zA-Z0-9-]+$/;
+    if (!validPattern.test(trimmedQuery)) {
+      setErrorMessage('Domain name can only contain letters, numbers, and hyphens');
+      return;
+    }
+    
+    // Check if starts or ends with hyphen
+    if (trimmedQuery.startsWith('-') || trimmedQuery.endsWith('-')) {
+      setErrorMessage('Domain name cannot start or end with a hyphen');
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // Check availability from database only (disable on-chain checks)
+      let databaseAvailable = true;
+      try {
+        databaseAvailable = await domainService.checkAvailability(trimmedQuery.toLowerCase());
+        console.log('📊 Database check result:', databaseAvailable);
+      } catch (error) {
+        console.warn('⚠️ Database check failed:', error);
+      }
+      
+      // Domain availability is determined solely by database
+      const isAvailable = databaseAvailable;
+      
+      setSearchResult({
+        name: trimmedQuery.toLowerCase(),
+        available: isAvailable,
+        price: '1000 tCTC'
+      });
+    } catch (error) {
+      console.error('Domain search failed:', error);
+      setErrorMessage('Domain search failed. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Register domain function
+  const registerDomain = async () => {
+    if (!searchResult || !isConnected) return;
+
+    // Show confirmation modal
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirm Domain Registration',
+      message: `You are about to register "${searchResult.name}.ctc" for 1000 tCTC (1 year). This transaction cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        
+        setIsRegistering(true);
+        try {
+          let transactionHash = '';
+          
+          // Register on-chain (REQUIRED - no fallback)
+          if (!window.ethereum) {
+            throw new Error('No wallet connected. Please connect your wallet to register domains.');
+          }
+          
+          console.log('🔗 Starting on-chain registration...');
+          console.log('💰 This will cost 1000 tCTC + gas fees');
+          
+          const contract = getCreditContract(window.ethereum);
+          
+          transactionHash = await contract.registerDomain(searchResult.name);
+          
+          console.log('✅ Transaction submitted:', transactionHash);
+          
+          console.log('✅ On-chain registration successful:', transactionHash);
+
+          // Only proceed if transaction was actually confirmed
+          // Register in database
+          const newDomain = await domainService.registerDomain(
+            searchResult.name,
+            address!,
+            searchResult.price,
+            transactionHash
+          );
+
+          // Add .ctc extension for display
+          const displayDomain = {
+            ...newDomain,
+            name: newDomain.name + '.ctc'
+          };
+
+          setUserDomains(prev => [...prev, displayDomain]);
+          setSearchResult(null);
+          setSearchQuery('');
+          
+          // Success notification - only after confirmation
+          showSuccess(
+            'Domain Registered Successfully!',
+            `${searchResult.name}.ctc has been confirmed on the blockchain and registered to your wallet.`
+          );
+        } catch (error: unknown) {
+          console.error('Domain registration failed:', error);
+          showError(
+            'Registration Failed',
+            (error as Error).message || 'Failed to register domain. Please try again.'
+          );
+        } finally {
+          setIsRegistering(false);
+        }
+      }
+    });
+  };
+
+  // Load user domains
+  const loadUserDomains = async () => {
+    if (!address) return;
+
+    try {
+      const domains = await domainService.getDomainsByOwner(address);
+      
+      // Add .ctc extension for display
+      const displayDomains = domains.map(domain => ({
+        ...domain,
+        name: domain.name + '.ctc'
+      }));
+      
+      setUserDomains(displayDomains);
+    } catch (error) {
+      console.error('Failed to load user domains:', error);
+    }
+  };
+
+  // Load transfer history
+  const loadTransferHistory = async () => {
+    if (!address) return;
+
+    try {
+      const transfers = await domainService.getTransferHistory(address);
+      setTransferHistory(transfers);
+    } catch (error) {
+      console.error('Failed to load transfer history:', error);
+    }
+  };
+
+  const formatAddress = (address: string) => {
+    if (address.length <= 12) return address;
+    return `${address.slice(0, 6)}...${address.slice(-6)}`;
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US');
+  };
+
+  const handleTransferComplete = () => {
+    loadUserDomains();
+    loadTransferHistory();
+  };
+
+  // Canvas animation effect
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const noise = createNoise3D();
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+    let nt = 0;
+
+    const extraWidth = 200;
+    canvas.width = w + extraWidth;
+    canvas.height = h;
+
+    const waveColors = ["#0ea5e9", "#3b82f6", "#1d4ed8", "#1e40af", "#1e3a8a"];
+
+    const render = () => {
+      ctx.fillStyle = "black";
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(0, 0, w + extraWidth, h);
+
+      nt += 0.001;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.lineWidth = 50;
+        ctx.strokeStyle = waveColors[i % waveColors.length];
+        for (let x = -extraWidth / 2; x < w + extraWidth / 2; x += 5) {
+          const y = noise(x / 800, 0.3 * i, nt) * 100;
+          ctx.lineTo(x + extraWidth / 2, y + h * 0.5);
+        }
+        ctx.stroke();
+        ctx.closePath();
+      }
+      requestAnimationFrame(render);
+    };
+
+    const handleResize = () => {
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas.width = w + extraWidth;
+      canvas.height = h;
+    };
+
+    window.addEventListener('resize', handleResize);
+    render();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  return (
+    <>
+      <GlobalStyle />
+      <PageContainer>
+        <Canvas ref={canvasRef} />
+
+        <GlassCard>
+          {devnetIssue && (
+            <DevnetBanner>
+              <span>
+                Warning: Network may be responding slowly. Transactions can take longer than usual.
+              </span>
+              <button
+                onClick={() => setDevnetIssue(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255, 193, 7, 0.4)',
+                  color: '#ffc107',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  cursor: 'pointer'
+                }}
+              >
+                Kapat
+              </button>
+            </DevnetBanner>
+          )}
+          <Header>
+            <div>
+              <Title>
+                <ScrambleText 
+                  text="Credit Name Service" 
+                  delay={200}
+                  duration={2000}
+                />
+              </Title>
+              <Subtitle>
+                <ScrambleText 
+                  text="Get your own domain on Credit Testnet" 
+                  delay={800}
+                  duration={2500}
+                />
+              </Subtitle>
+            </div>
+          </Header>
+
+          {activeTab === 'search' && (
+            <SearchView>
+              <SearchContainer>
+                <SearchBox>
+                  <SearchInput
+                    type="text"
+                    placeholder="Enter domain (min 3 chars)"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    onKeyPress={(e) => e.key === 'Enter' && searchDomain()}
+                  />
+                  <DomainExtension>.ctc</DomainExtension>
+                  <SearchButton
+                    onClick={searchDomain}
+                    disabled={isSearching || !searchQuery.trim() || searchQuery.trim().length < 3}
+                  >
+                    <FaSearch />
+                    {isSearching ? '...' : 'Search'}
+                  </SearchButton>
+                </SearchBox>
+              </SearchContainer>
+
+              {errorMessage && (
+                <ErrorMessage>{errorMessage}</ErrorMessage>
+              )}
+
+              {searchResult && (
+                <DomainResult>
+                  <DomainHeader>
+                    <DomainName>
+                      {searchResult.name}.ctc
+                    </DomainName>
+                    <AvailabilityBadge $available={searchResult.available}>
+                      {searchResult.available ? <FaCheck /> : <FaTimes />}
+                      {searchResult.available ? 'Available' : 'Taken'}
+                    </AvailabilityBadge>
+                  </DomainHeader>
+
+                  {searchResult.available && (
+                    <>
+                      <DomainInfo>
+                        <div>
+                          <PriceLabel>Registration Fee</PriceLabel>
+                        </div>
+                        <PriceInfo>
+                          <Price>{searchResult.price}</Price>
+                          <PriceLabel>for 1 year</PriceLabel>
+                        </PriceInfo>
+                      </DomainInfo>
+
+                      {isConnected ? (
+                        true ? (
+                          <RegisterButton
+                            onClick={registerDomain}
+                            disabled={isRegistering}
+                          >
+                            {isRegistering ? 'Waiting for blockchain confirmation...' : 'Register Domain'}
+                          </RegisterButton>
+                        ) : (
+                          <></>
+                        )
+                      ) : (
+                        <RegisterButton onClick={() => setWalletModalOpen(true)}>
+                          Connect Wallet
+                        </RegisterButton>
+                      )}
+                    </>
+                  )}
+                </DomainResult>
+              )}
+
+              {!isConnected && (
+                <WalletButton
+                  onClick={() => setWalletModalOpen(true)}
+                  disabled={isLoading}
+                >
+                  <FaWallet />
+                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                </WalletButton>
+              )}
+
+              {isConnected && (
+                <DisconnectButton onClick={disconnect}>
+                  <FaSignOutAlt />
+                  Disconnect ({formatAddress(address!)})
+                </DisconnectButton>
+              )}
+            </SearchView>
+          )}
+
+          {activeTab === 'profile' && (
+            <ProfileView>
+              <ProfileTitle>My Profile</ProfileTitle>
+              <ProfileSubtitle>Your owned domains</ProfileSubtitle>
+
+              {isConnected ? (
+                userDomains.length > 0 ? (
+                  <DomainList>
+                    {userDomains.map((domain, index) => (
+                      <DomainCard key={index}>
+                        <DomainCardHeader>
+                          <DomainCardName>{domain.name}</DomainCardName>
+                          <DomainStatus status={new Date(domain.expiration_date) > new Date() ? 'active' : 'expired'}>
+                            {new Date(domain.expiration_date) > new Date() ? 'Active' : 'Expired'}
+                          </DomainStatus>
+                        </DomainCardHeader>
+                        <DomainCardInfo>
+                          <span>Registered: {formatDate(domain.registration_date)}</span>
+                          <span>Expires: {formatDate(domain.expiration_date)}</span>
+                        </DomainCardInfo>
+                        <DomainActions>
+                          <ActionButton onClick={() => setTransferDomain(domain)}>
+                            <FaPaperPlane />
+                            Transfer
+                          </ActionButton>
+                        </DomainActions>
+                      </DomainCard>
+                    ))}
+                  </DomainList>
+                ) : (
+                  <EmptyState>
+                    <EmptyStateIcon>
+                      <FaGlobe />
+                    </EmptyStateIcon>
+                    <EmptyStateText>You don&apos;t have any domains yet</EmptyStateText>
+                  </EmptyState>
+                )
+              ) : (
+                <EmptyState>
+                  <EmptyStateIcon>
+                    <FaWallet />
+                  </EmptyStateIcon>
+                  <EmptyStateText>Connect your wallet</EmptyStateText>
+                </EmptyState>
+              )}
+            </ProfileView>
+          )}
+
+          {activeTab === 'transfers' && (
+            <ProfileView>
+              <ProfileTitle>Transfer History</ProfileTitle>
+              <ProfileSubtitle>All domain transfers you've sent and received</ProfileSubtitle>
+
+              {isConnected ? (
+                transferHistory.length > 0 ? (
+                  <DomainList>
+                    {transferHistory.map((transfer, index) => {
+                      const isSent = transfer.from_address.toLowerCase() === address?.toLowerCase();
+                      
+                      return (
+                        <DomainCard key={index}>
+                          <DomainCardHeader>
+                          <DomainCardName>{transfer.domains?.name}.ctc</DomainCardName>
+                            <DomainStatus status={transfer.status === 'completed' ? 'active' : 'expired'}>
+                              {isSent ? '📤 Sent' : '📥 Received'}
+                            </DomainStatus>
+                          </DomainCardHeader>
+                          <DomainCardInfo>
+                            <span>
+                              {isSent ? 'To: ' : 'From: '}
+                              {formatAddress(isSent ? transfer.to_address : transfer.from_address)}
+                            </span>
+                            <span>Date: {formatDate(transfer.created_at)}</span>
+                          </DomainCardInfo>
+                          <DomainCardInfo>
+                            <span>Status: {transfer.status}</span>
+                            {transfer.transaction_hash && (
+                              <span>
+                                <a 
+                                  href={`https://devnet.explorer.moved.network/tx/${transfer.transaction_hash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ color: '#3b82f6', textDecoration: 'none' }}
+                                >
+                                  View TX
+                                </a>
+                              </span>
+                            )}
+                          </DomainCardInfo>
+                        </DomainCard>
+                      );
+                    })}
+                  </DomainList>
+                ) : (
+                  <EmptyState>
+                    <EmptyStateIcon>
+                      <FaInbox />
+                    </EmptyStateIcon>
+                    <EmptyStateText>No transfer history yet</EmptyStateText>
+                  </EmptyState>
+                )
+              ) : (
+                <EmptyState>
+                  <EmptyStateIcon>
+                    <FaWallet />
+                  </EmptyStateIcon>
+                  <EmptyStateText>Connect your wallet to view transfer history</EmptyStateText>
+                </EmptyState>
+              )}
+            </ProfileView>
+          )}
+        </GlassCard>
+
+        <BottomNavigation>
+          <NavItem
+            $active={activeTab === 'search'}
+            onClick={() => setActiveTab('search')}
+          >
+            <FaSearch size={16} />
+            <NavText $active={activeTab === 'search'}>Search</NavText>
+          </NavItem>
+          <NavItem
+            $active={activeTab === 'profile'}
+            onClick={() => setActiveTab('profile')}
+          >
+            <FaUser size={16} />
+            <NavText $active={activeTab === 'profile'}>Profile</NavText>
+          </NavItem>
+          <NavItem
+            $active={activeTab === 'transfers'}
+            onClick={() => setActiveTab('transfers')}
+          >
+            <FaInbox size={16} />
+            <NavText $active={activeTab === 'transfers'}>
+              History
+              {transferHistory.length > 0 && (
+                <span style={{ 
+                  background: '#ef4444', 
+                  borderRadius: '50%', 
+                  width: '6px', 
+                  height: '6px', 
+                  display: 'inline-block', 
+                  marginLeft: '4px' 
+                }} />
+              )}
+            </NavText>
+          </NavItem>
+        </BottomNavigation>
+
+        {walletModalOpen && (
+          <WalletModal onClick={() => setWalletModalOpen(false)}>
+            <WalletModalContent onClick={(e) => e.stopPropagation()}>
+              <CloseButton onClick={() => setWalletModalOpen(false)}>
+                ×
+              </CloseButton>
+              <WalletModalTitle>Choose Wallet</WalletModalTitle>
+              <WalletSelector>
+                <WalletOption onClick={() => { connect('metamask'); setWalletModalOpen(false); }}>
+                  <FaWallet />
+                  MetaMask
+                </WalletOption>
+                <WalletOption onClick={() => { connect('okx'); setWalletModalOpen(false); }}>
+                  <FaWallet />
+                  OKX Wallet
+                </WalletOption>
+                <WalletOption onClick={() => { connect('walletconnect'); setWalletModalOpen(false); }}>
+                  <FaWallet />
+                  WalletConnect
+                </WalletOption>
+              </WalletSelector>
+            </WalletModalContent>
+          </WalletModal>
+        )}
+
+        {transferDomain && (
+          <DomainTransfer
+            domain={transferDomain}
+            onTransferComplete={handleTransferComplete}
+            onClose={() => setTransferDomain(null)}
+          />
+        )}
+
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText="Register Domain"
+          cancelText="Cancel"
+          type="info"
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        />
+
+        <NotificationContainer />
+      </PageContainer>
+    </>
+  );
+}
