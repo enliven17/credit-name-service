@@ -1,7 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { EthereumProvider } from '@walletconnect/ethereum-provider';
+// WalletConnect auto-init disabled in dev; RainbowKit handles connections
+// import { EthereumProvider } from '@walletconnect/ethereum-provider';
+// RainbowKit will be used for connection UI; this context remains for app state
 
 // Umi Devnet network configuration
 const UMI_DEVNET_CONFIG = {
@@ -95,66 +97,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [isUmiNetwork, setIsUmiNetwork] = useState(false);
   const [walletConnectProvider, setWalletConnectProvider] = useState<any>(null);
 
-  // Initialize WalletConnect provider
-  useEffect(() => {
-    const initWalletConnect = async () => {
-      try {
-        const provider = await EthereumProvider.init({
-          projectId: '4e15443e90a67dfb3b948fcc2e17eb12', // WalletConnect Project ID
-          chains: [42069], // Umi Devnet chain ID
-          optionalChains: [1, 137, 56, 42161], // Optional chains
-          showQrModal: true,
-          metadata: {
-            name: 'Umi Name Service',
-            description: 'Get your own domain on Umi Network',
-            url: 'https://umi-name-service.com',
-            icons: ['https://umi-name-service.com/unslogo.png']
-          }
-        });
-        
-        setWalletConnectProvider(provider);
-        
-        // Listen for WalletConnect events
-        provider.on('accountsChanged', (accounts: string[]) => {
-          if (accounts.length === 0) {
-            disconnect();
-          } else {
-            setAddress(accounts[0]);
-            localStorage.setItem('walletAddress', accounts[0]);
-          }
-        });
-        
-        provider.on('chainChanged', (chainId: string) => {
-          const isUmi = chainId.toLowerCase() === UMI_DEVNET_CONFIG.chainId.toLowerCase();
-          console.log('WalletConnect chain changed - New chain ID:', chainId, 'Is Umi:', isUmi);
-          setIsUmiNetwork(isUmi);
-          
-          if (!isUmi && isConnected) {
-            console.warn('Please switch to Umi Devnet to use this application.');
-          }
-        });
-        
-        provider.on('disconnect', () => {
-          disconnect();
-        });
-        
-        provider.on('display_uri', (uri: string) => {
-          console.log('WalletConnect QR URI:', uri);
-        });
-        
-        // Handle connection errors silently
-        provider.on('connect_error', (error: any) => {
-          console.log('WalletConnect connection error (handled silently):', error);
-          // Don't show alert for connection errors
-        });
-        
-      } catch (error) {
-        console.error('Failed to initialize WalletConnect:', error);
-      }
-    };
-
-    initWalletConnect();
-  }, []);
+  // WalletConnect disabled – use RainbowKit only
+  useEffect(() => {}, []);
 
   // Check if wallet is already connected on mount
   useEffect(() => {
@@ -405,7 +349,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         isUmi = await checkNetwork();
       }
       
-      if (!isUmi) {
+      if (false) {
         // Try to switch to Umi Devnet - this is required
         try {
           console.log('Not on Umi Devnet, attempting to switch...');

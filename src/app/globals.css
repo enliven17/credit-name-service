@@ -22,12 +22,8 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  opacity: 0;
+  opacity: 1; /* Always visible */
   transition: opacity 0.3s ease-in-out;
-}
-
-body.loaded {
-  opacity: 1;
 }
 
 /* Ensure loading screen is always on top */

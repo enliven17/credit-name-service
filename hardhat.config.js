@@ -1,5 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("@moved/hardhat-plugin");
+// require("@moved/hardhat-plugin"); // disabled: causes ENOENT for Move packages
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -15,10 +15,10 @@ module.exports = {
   },
   defaultNetwork: process.env.NETWORK || "creditTestnet",
   networks: {
-    // Credit Testnet configuration
+    // Creditcoin Testnet configuration
     creditTestnet: {
-      url: process.env.CREDIT_RPC_URL || "https://rpc.testnet.creditcoin.network", // placeholder
-      chainId: process.env.CREDIT_CHAIN_ID ? Number(process.env.CREDIT_CHAIN_ID) : 0,
+      url: process.env.CREDIT_RPC_URL || "https://rpc.cc3-testnet.creditcoin.network",
+      chainId: process.env.CREDIT_CHAIN_ID ? Number(process.env.CREDIT_CHAIN_ID) : 102031,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       timeout: 300000,
     },

@@ -140,7 +140,7 @@ const TransferButton = styled.button`
   padding: 16px 0;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #22c55e 0%, #065f46 100%);
   color: white;
   font-size: 1.1rem;
   font-weight: 600;
@@ -153,7 +153,7 @@ const TransferButton = styled.button`
   
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
   }
   
   &:disabled {

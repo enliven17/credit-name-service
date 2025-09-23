@@ -10,6 +10,8 @@ import { getCreditContract } from '@/lib/contract';
 import { DomainTransfer } from '@/components/DomainTransfer';
 import { useNotification } from '@/components/Notification';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount, useDisconnect as useWagmiDisconnect } from 'wagmi';
 
 // Scramble animation hook
 const useScrambleText = (text: string, duration: number = 2000) => {
@@ -184,7 +186,7 @@ const Header = styled.div`
 const Title = styled.h1`
   font-size: 2.5rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #22c55e 0%, #065f46 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -260,7 +262,7 @@ const DomainExtension = styled.span`
 `;
 
 const SearchButton = styled.button`
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #22c55e 0%, #065f46 100%);
   border: none;
   border-radius: 12px;
   padding: 12px 10px;
@@ -370,7 +372,7 @@ const RegisterButton = styled.button`
   padding: 16px 0;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #22c55e 0%, #065f46 100%);
   color: white;
   font-size: 1.1rem;
   font-weight: 600;
@@ -390,123 +392,9 @@ const RegisterButton = styled.button`
   }
 `;
 
-const WalletButton = styled.button`
-  width: 100%;
-  padding: 20px 0;
-  margin-top: 16px;
-  border: none;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
-  color: white;
-  font-size: 1.3rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-  transition: all 0.3s ease;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
-  }
-  
-  &:active {
-    transform: translateY(0);
-  }
-  
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-    transform: none;
-  }
-`;
+// Legacy WalletButton removed
 
-const WalletModal = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-`;
-
-const WalletModalContent = styled.div`
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  border-radius: 20px;
-  padding: 32px;
-  max-width: 400px;
-  width: 90%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-`;
-
-const WalletModalTitle = styled.h3`
-  color: white;
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0 0 24px 0;
-  text-align: center;
-`;
-
-const WalletSelector = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const WalletOption = styled.button`
-  width: 100%;
-  padding: 16px 20px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: #3b82f6;
-    transform: translateY(-2px);
-  }
-`;
-
-const CloseButton = styled.button`
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2rem;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-`;
+// Legacy Wallet modal components removed
 
 const NetworkWarning = styled.div`
   background: rgba(255, 193, 7, 0.1);
@@ -579,10 +467,10 @@ const BottomNavigation = styled.div`
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(34, 197, 94, 0.08);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.25);
   border-radius: 25px;
   padding: 12px 24px;
   display: flex;
@@ -603,11 +491,11 @@ const NavItem = styled.div<{ $active?: boolean }>`
   transition: all 0.3s ease;
   padding: 8px 12px;
   border-radius: 16px;
-  background: ${props => props.$active ? 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)' : 'transparent'};
+  background: ${props => props.$active ? 'linear-gradient(135deg, #22c55e 0%, #065f46 100%)' : 'transparent'};
   min-width: 60px;
   
   &:hover {
-    background: ${props => props.$active ? 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)' : 'rgba(255, 255, 255, 0.1)'};
+    background: ${props => props.$active ? 'linear-gradient(135deg, #22c55e 0%, #065f46 100%)' : 'rgba(34, 197, 94, 0.12)'};
     transform: translateY(-2px);
   }
 `;
@@ -765,7 +653,7 @@ const GlobalStyle = styled.div`
 `;
 
 export default function Home() {
-  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  // Legacy wallet modal removed; RainbowKit ConnectButton is used
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState<DomainSearchResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -791,15 +679,19 @@ export default function Home() {
   const { showSuccess, showError, showWarning, NotificationContainer } = useNotification();
 
   const { isConnected, address, connect, disconnect, isLoading } = useWallet();
+  const wagmiAccount = useAccount();
+  const { disconnect: wagmiDisconnect } = useWagmiDisconnect();
+  const walletConnected = isConnected || wagmiAccount.isConnected;
+  const currentAddress = address || wagmiAccount.address;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load user domains when wallet connects
   useEffect(() => {
-    if (isConnected && address) {
+    if (walletConnected && currentAddress) {
       loadUserDomains();
       loadTransferHistory();
     }
-  }, [isConnected, address]);
+  }, [walletConnected, currentAddress]);
 
   // Show devnet congestion warning if registration takes too long
   useEffect(() => {
@@ -873,7 +765,7 @@ export default function Home() {
 
   // Register domain function
   const registerDomain = async () => {
-    if (!searchResult || !isConnected) return;
+    if (!searchResult || !walletConnected) return;
 
     // Show confirmation modal
     setConfirmModal({
@@ -907,7 +799,7 @@ export default function Home() {
           // Register in database
           const newDomain = await domainService.registerDomain(
             searchResult.name,
-            address!,
+            currentAddress!,
             searchResult.price,
             transactionHash
           );
@@ -942,10 +834,10 @@ export default function Home() {
 
   // Load user domains
   const loadUserDomains = async () => {
-    if (!address) return;
+    if (!currentAddress) return;
 
     try {
-      const domains = await domainService.getDomainsByOwner(address);
+      const domains = await domainService.getDomainsByOwner(currentAddress);
       
       // Add .ctc extension for display
       const displayDomains = domains.map(domain => ({
@@ -961,10 +853,10 @@ export default function Home() {
 
   // Load transfer history
   const loadTransferHistory = async () => {
-    if (!address) return;
+    if (!currentAddress) return;
 
     try {
-      const transfers = await domainService.getTransferHistory(address);
+      const transfers = await domainService.getTransferHistory(currentAddress);
       setTransferHistory(transfers);
     } catch (error) {
       console.error('Failed to load transfer history:', error);
@@ -985,6 +877,8 @@ export default function Home() {
     loadTransferHistory();
   };
 
+  // Marketplace removed
+
   // Canvas animation effect
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1002,7 +896,7 @@ export default function Home() {
     canvas.width = w + extraWidth;
     canvas.height = h;
 
-    const waveColors = ["#0ea5e9", "#3b82f6", "#1d4ed8", "#1e40af", "#1e3a8a"];
+    const waveColors = ["#22c55e", "#16a34a", "#10b981", "#065f46", "#15803d"];
 
     const render = () => {
       ctx.fillStyle = "black";
@@ -1110,6 +1004,12 @@ export default function Home() {
                 </SearchBox>
               </SearchContainer>
 
+              {!searchResult && !walletConnected && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                  <ConnectButton showBalance={false} accountStatus="address" />
+                </div>
+              )}
+
               {errorMessage && (
                 <ErrorMessage>{errorMessage}</ErrorMessage>
               )}
@@ -1125,6 +1025,11 @@ export default function Home() {
                       {searchResult.available ? 'Available' : 'Taken'}
                     </AvailabilityBadge>
                   </DomainHeader>
+                  {!walletConnected && (
+                    <div style={{ marginTop: 8, marginBottom: 8 }}>
+                      <ConnectButton showBalance={false} accountStatus="address" />
+                    </div>
+                  )}
 
                   {searchResult.available && (
                     <>
@@ -1138,41 +1043,25 @@ export default function Home() {
                         </PriceInfo>
                       </DomainInfo>
 
-                      {isConnected ? (
-                        true ? (
-                          <RegisterButton
-                            onClick={registerDomain}
-                            disabled={isRegistering}
-                          >
-                            {isRegistering ? 'Waiting for blockchain confirmation...' : 'Register Domain'}
-                          </RegisterButton>
-                        ) : (
-                          <></>
-                        )
-                      ) : (
-                        <RegisterButton onClick={() => setWalletModalOpen(true)}>
-                          Connect Wallet
-                        </RegisterButton>
-                      )}
+                      {/* marketplace actions removed */}
+
+                      <RegisterButton
+                        onClick={registerDomain}
+                        disabled={isRegistering || !walletConnected}
+                      >
+                        {isRegistering ? 'Waiting for blockchain confirmation...' : (!walletConnected ? 'Connect to Register' : 'Register Domain')}
+                      </RegisterButton>
                     </>
                   )}
                 </DomainResult>
               )}
 
-              {!isConnected && (
-                <WalletButton
-                  onClick={() => setWalletModalOpen(true)}
-                  disabled={isLoading}
-                >
-                  <FaWallet />
-                  {isLoading ? 'Connecting...' : 'Connect Wallet'}
-                </WalletButton>
-              )}
+              {!walletConnected && null}
 
-              {isConnected && (
-                <DisconnectButton onClick={disconnect}>
+              {walletConnected && (
+                <DisconnectButton onClick={() => { try { wagmiDisconnect?.(); } catch (e) {} try { disconnect(); } catch (e) {} }}>
                   <FaSignOutAlt />
-                  Disconnect ({formatAddress(address!)})
+                  Disconnect ({formatAddress(currentAddress || '')})
                 </DisconnectButton>
               )}
             </SearchView>
@@ -1183,7 +1072,7 @@ export default function Home() {
               <ProfileTitle>My Profile</ProfileTitle>
               <ProfileSubtitle>Your owned domains</ProfileSubtitle>
 
-              {isConnected ? (
+              {walletConnected ? (
                 userDomains.length > 0 ? (
                   <DomainList>
                     {userDomains.map((domain, index) => (
@@ -1231,11 +1120,11 @@ export default function Home() {
               <ProfileTitle>Transfer History</ProfileTitle>
               <ProfileSubtitle>All domain transfers you've sent and received</ProfileSubtitle>
 
-              {isConnected ? (
+              {walletConnected ? (
                 transferHistory.length > 0 ? (
                   <DomainList>
                     {transferHistory.map((transfer, index) => {
-                      const isSent = transfer.from_address.toLowerCase() === address?.toLowerCase();
+                      const isSent = transfer.from_address.toLowerCase() === currentAddress?.toLowerCase();
                       
                       return (
                         <DomainCard key={index}>
@@ -1257,7 +1146,7 @@ export default function Home() {
                             {transfer.transaction_hash && (
                               <span>
                                 <a 
-                                  href={`https://devnet.explorer.moved.network/tx/${transfer.transaction_hash}`}
+                                  href={`${process.env.NEXT_PUBLIC_CREDIT_EXPLORER_URL || 'https://creditcoin-testnet.blockscout.com'}/tx/${transfer.transaction_hash}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style={{ color: '#3b82f6', textDecoration: 'none' }}
@@ -1326,32 +1215,7 @@ export default function Home() {
             </NavText>
           </NavItem>
         </BottomNavigation>
-
-        {walletModalOpen && (
-          <WalletModal onClick={() => setWalletModalOpen(false)}>
-            <WalletModalContent onClick={(e) => e.stopPropagation()}>
-              <CloseButton onClick={() => setWalletModalOpen(false)}>
-                ×
-              </CloseButton>
-              <WalletModalTitle>Choose Wallet</WalletModalTitle>
-              <WalletSelector>
-                <WalletOption onClick={() => { connect('metamask'); setWalletModalOpen(false); }}>
-                  <FaWallet />
-                  MetaMask
-                </WalletOption>
-                <WalletOption onClick={() => { connect('okx'); setWalletModalOpen(false); }}>
-                  <FaWallet />
-                  OKX Wallet
-                </WalletOption>
-                <WalletOption onClick={() => { connect('walletconnect'); setWalletModalOpen(false); }}>
-                  <FaWallet />
-                  WalletConnect
-                </WalletOption>
-              </WalletSelector>
-            </WalletModalContent>
-          </WalletModal>
-        )}
-
+        
         {transferDomain && (
           <DomainTransfer
             domain={transferDomain}
@@ -1359,6 +1223,8 @@ export default function Home() {
             onClose={() => setTransferDomain(null)}
           />
         )}
+
+        {/* Marketplace view removed */}
 
         <ConfirmationModal
           isOpen={confirmModal.isOpen}

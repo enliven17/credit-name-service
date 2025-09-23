@@ -16,13 +16,24 @@ contract CreditNameService is Ownable {
 
     // price is in smallest unit of chain native token. For Credit testnet tCTC (18 decimals)
     uint256 public constant REGISTRATION_PRICE = 1000 ether; // 1000 tCTC
+    uint256 public constant TRANSFER_FEE = 100 ether; // 100 tCTC
     uint256 public constant REGISTRATION_DURATION = 365 days;
 
     event Registered(string indexed name, address indexed owner, uint256 expiresAt);
     event Renewed(string indexed name, uint256 newExpiresAt);
     event Transferred(string indexed name, address indexed from, address indexed to);
+    event MarketplaceUpdated(address marketplace);
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    address public marketplace;
+
+    constructor(address initialOwner) {
+        _transferOwnership(initialOwner);
+    }
+
+    function setMarketplace(address m) external onlyOwner {
+        marketplace = m;
+        emit MarketplaceUpdated(m);
+    }
 
     function _isExpired(DomainRecord memory rec) internal view returns (bool) {
         return rec.expiresAt < block.timestamp;
@@ -79,7 +90,8 @@ contract CreditNameService is Ownable {
         emit Renewed(n, newExpiry);
     }
 
-    function transfer(string calldata name, address to) external {
+    function transfer(string calldata name, address to) external payable {
+        require(msg.value == TRANSFER_FEE, "FEE");
         require(to != address(0), "BAD_TO");
         string memory n = _toLower(name);
         DomainRecord memory rec = nameToRecord[n];
@@ -88,6 +100,18 @@ contract CreditNameService is Ownable {
 
         nameToRecord[n].owner = to;
         emit Transferred(n, msg.sender, to);
+    }
+
+    // Transfer callable by marketplace contract during a sale
+    function marketTransfer(string calldata name, address from, address to) external {
+        require(msg.sender == marketplace, "ONLY_MKT");
+        require(to != address(0) && from != address(0), "BAD_ADDR");
+        string memory n = _toLower(name);
+        DomainRecord memory rec = nameToRecord[n];
+        require(rec.owner == from, "NOT_OWNER");
+        require(!_isExpired(rec), "EXPIRED");
+        nameToRecord[n].owner = to;
+        emit Transferred(n, from, to);
     }
 
     function withdraw(address payable to) external onlyOwner {

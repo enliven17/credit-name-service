@@ -11,10 +11,11 @@ const CREDIT_NAME_SERVICE_ABI = [
   "function expiresAt(string) view returns (uint64)",
 ]
 
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CREDIT_CONTRACT_ADDRESS || ''
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CREDIT_CONTRACT_ADDRESS || '0x95bc083e6911DeBc46b36cDCE8996fAEB28bf9A6'
 
 console.log('🔗 Using Credit contract address:', CONTRACT_ADDRESS);
 const DOMAIN_PRICE = ethers.parseEther('1000') // 1000 tCTC
+const TRANSFER_FEE = ethers.parseEther('100')  // 100 tCTC
 
 export class CreditNameServiceContract {
   private contract: ethers.Contract
@@ -128,7 +129,7 @@ export class CreditNameServiceContract {
   async transferDomain(domainName: string, toAddress: string): Promise<string> {
     try {
       const signer = await this.signer;
-      const tx = await this.contract.connect(signer).transfer(domainName.toLowerCase(), toAddress)
+      const tx = await this.contract.connect(signer).transfer(domainName.toLowerCase(), toAddress, { value: TRANSFER_FEE })
       await tx.wait()
       return tx.hash
     } catch (error: any) {
