@@ -23,6 +23,7 @@ async function main() {
   console.log("Linked marketplace in NameService.");
 
   console.log(`NEXT_PUBLIC_CREDIT_CONTRACT_ADDRESS=${nsAddr}`);
+  console.log(`NEXT_PUBLIC_MARKETPLACE_CONTRACT_ADDRESS=${mktAddr}`);
 }
 
 main().catch((e) => {

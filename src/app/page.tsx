@@ -2,12 +2,15 @@
 
 import styled from 'styled-components';
 import { useState, useEffect, useRef } from 'react';
-import { FaSearch, FaUser, FaWallet, FaSignOutAlt, FaGlobe, FaCheck, FaTimes, FaPaperPlane, FaInbox } from 'react-icons/fa';
+import { FaSearch, FaUser, FaWallet, FaSignOutAlt, FaGlobe, FaCheck, FaTimes, FaPaperPlane, FaInbox, FaTag, FaChevronUp, FaChevronDown } from 'react-icons/fa';
 import { createNoise3D } from "simplex-noise";
 import { useWallet } from '@/contexts/WalletContext';
 import { domainService, Domain as SupabaseDomain } from '@/lib/supabase';
 import { getCreditContract } from '@/lib/contract';
 import { DomainTransfer } from '@/components/DomainTransfer';
+import CreateListingModal from '@/components/CreateListingModal';
+import { MarketplaceListings } from '@/components/MarketplaceListings';
+import { marketplaceService } from '@/lib/marketplace';
 import { useNotification } from '@/components/Notification';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -515,6 +518,9 @@ const SearchView = styled.div`
 
 const ProfileView = styled.div`
   width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   animation: fadeIn 0.2s ease-in-out;
 `;
 
@@ -531,10 +537,76 @@ const ProfileSubtitle = styled.p`
   margin: 0 0 32px 0;
 `;
 
-const DomainList = styled.div`
+const DomainsContainer = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+`;
+
+const DomainsHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+`;
+
+const DomainCounter = styled.span`
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+`;
+
+const NavigationControls = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
+`;
+
+const NavButton = styled.button<{ disabled?: boolean }>`
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+`;
+
+const DomainViewport = styled.div<{ itemCount: number }>`
+  height: ${props => Math.min(props.itemCount, 2) * 180}px; /* Dynamic height based on item count */
+  overflow: hidden;
+  position: relative;
+`;
+
+const DomainList = styled.div<{ currentIndex: number }>`
   display: flex;
   flex-direction: column;
   gap: 16px;
+  transform: translateY(${props => -props.currentIndex * 180}px);
+  transition: transform 0.3s ease;
+`;
+
+const TransferList = styled.div<{ currentIndex: number }>`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateY(${props => -props.currentIndex * 180}px);
+  transition: transform 0.3s ease;
 `;
 
 const DomainCard = styled.div`
@@ -542,6 +614,10 @@ const DomainCard = styled.div`
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   padding: 20px;
+  height: 164px; /* Fixed height for consistent spacing */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   transition: all 0.3s ease;
   
   &:hover {
@@ -572,6 +648,25 @@ const DomainStatus = styled.span<{ status: 'active' | 'expired' }>`
   background: ${props => props.status === 'active' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'};
   color: ${props => props.status === 'active' ? '#22c55e' : '#ef4444'};
   border: 1px solid ${props => props.status === 'active' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'};
+`;
+
+const ListingStatus = styled.span`
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+const DomainStatusContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
 `;
 
 const DomainCardInfo = styled.div`
@@ -659,9 +754,13 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [userDomains, setUserDomains] = useState<SupabaseDomain[]>([]);
+  const [userListings, setUserListings] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('search');
+  const [currentDomainIndex, setCurrentDomainIndex] = useState(0);
+  const [currentTransferIndex, setCurrentTransferIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [transferDomain, setTransferDomain] = useState<SupabaseDomain | null>(null);
+  const [listDomain, setListDomain] = useState<SupabaseDomain | null>(null);
   const [transferHistory, setTransferHistory] = useState<any[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -690,6 +789,7 @@ export default function Home() {
     if (walletConnected && currentAddress) {
       loadUserDomains();
       loadTransferHistory();
+      loadUserListings();
     }
   }, [walletConnected, currentAddress]);
 
@@ -863,6 +963,18 @@ export default function Home() {
     }
   };
 
+  // Load user marketplace listings
+  const loadUserListings = async () => {
+    if (!currentAddress) return;
+
+    try {
+      const listings = await marketplaceService.getListingsBySeller(currentAddress);
+      setUserListings(listings);
+    } catch (error) {
+      console.error('Failed to load user listings:', error);
+    }
+  };
+
   const formatAddress = (address: string) => {
     if (address.length <= 12) return address;
     return `${address.slice(0, 6)}...${address.slice(-6)}`;
@@ -872,9 +984,60 @@ export default function Home() {
     return new Date(dateString).toLocaleDateString('en-US');
   };
 
+  // Check if domain is currently listed in marketplace
+  const isDomainListed = (domainName: string) => {
+    console.log('Checking if domain is listed:', domainName);
+    console.log('User listings:', userListings);
+    
+    const isListed = userListings.some(listing => {
+      const listingDomainName = listing.domain?.name;
+      console.log('Comparing:', domainName, 'with', listingDomainName, 'status:', listing.status);
+      
+      // Remove .ctc extension from domainName for comparison
+      const cleanDomainName = domainName.replace('.ctc', '');
+      const cleanListingName = listingDomainName?.replace('.ctc', '');
+      
+      return (cleanListingName === cleanDomainName || listingDomainName === domainName) && 
+             listing.status === 'active';
+    });
+    
+    console.log('Is listed result:', isListed);
+    return isListed;
+  };
+
+  // Navigation functions
+  const goToPreviousDomain = () => {
+    setCurrentDomainIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const goToNextDomain = () => {
+    const maxIndex = Math.max(0, userDomains.length - 2); // Show max 2 domains at once
+    setCurrentDomainIndex(prev => Math.min(maxIndex, prev + 1));
+  };
+
+  // Transfer navigation functions
+  const goToPreviousTransfer = () => {
+    setCurrentTransferIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const goToNextTransfer = () => {
+    const maxIndex = Math.max(0, transferHistory.length - 2);
+    setCurrentTransferIndex(prev => Math.min(maxIndex, prev + 1));
+  };
+
+  // Reset indices when data changes
+  useEffect(() => {
+    setCurrentDomainIndex(0);
+  }, [userDomains.length]);
+
+  useEffect(() => {
+    setCurrentTransferIndex(0);
+  }, [transferHistory.length]);
+
   const handleTransferComplete = () => {
     loadUserDomains();
     loadTransferHistory();
+    loadUserListings();
   };
 
   // Marketplace removed
@@ -963,11 +1126,7 @@ export default function Home() {
           <Header>
             <div>
               <Title>
-                <ScrambleText 
-                  text="Credit Name Service" 
-                  delay={200}
-                  duration={2000}
-                />
+                Credit Name Service
               </Title>
               <Subtitle>
                 <ScrambleText 
@@ -1074,28 +1233,81 @@ export default function Home() {
 
               {walletConnected ? (
                 userDomains.length > 0 ? (
-                  <DomainList>
-                    {userDomains.map((domain, index) => (
-                      <DomainCard key={index}>
-                        <DomainCardHeader>
-                          <DomainCardName>{domain.name}</DomainCardName>
-                          <DomainStatus status={new Date(domain.expiration_date) > new Date() ? 'active' : 'expired'}>
-                            {new Date(domain.expiration_date) > new Date() ? 'Active' : 'Expired'}
-                          </DomainStatus>
-                        </DomainCardHeader>
-                        <DomainCardInfo>
-                          <span>Registered: {formatDate(domain.registration_date)}</span>
-                          <span>Expires: {formatDate(domain.expiration_date)}</span>
-                        </DomainCardInfo>
-                        <DomainActions>
-                          <ActionButton onClick={() => setTransferDomain(domain)}>
-                            <FaPaperPlane />
-                            Transfer
-                          </ActionButton>
-                        </DomainActions>
-                      </DomainCard>
-                    ))}
-                  </DomainList>
+                  <DomainsContainer>
+                    <DomainsHeader>
+                      <DomainCounter>
+                        {userDomains.length} total domain{userDomains.length > 1 ? 's' : ''}
+                      </DomainCounter>
+                      {userDomains.length > 2 && (
+                        <NavigationControls>
+                          <NavButton 
+                            onClick={goToPreviousDomain}
+                            disabled={currentDomainIndex === 0}
+                          >
+                            <FaChevronUp size={14} />
+                          </NavButton>
+                          <NavButton 
+                            onClick={goToNextDomain}
+                            disabled={currentDomainIndex >= Math.max(0, userDomains.length - 2)}
+                          >
+                            <FaChevronDown size={14} />
+                          </NavButton>
+                        </NavigationControls>
+                      )}
+                    </DomainsHeader>
+
+                    <DomainViewport itemCount={userDomains.length}>
+                      <DomainList currentIndex={currentDomainIndex}>
+                        {userDomains.map((domain, index) => {
+                          const isListed = isDomainListed(domain.name);
+                          const isExpired = new Date(domain.expiration_date) <= new Date();
+                          
+                          return (
+                            <DomainCard key={index}>
+                              <DomainCardHeader>
+                                <DomainCardName>{domain.name}</DomainCardName>
+                                <DomainStatusContainer>
+                                  <DomainStatus status={isExpired ? 'expired' : 'active'}>
+                                    {isExpired ? 'Expired' : 'Active'}
+                                  </DomainStatus>
+                                  {isListed && (
+                                    <ListingStatus>
+                                      <FaTag size={10} />
+                                      Listed
+                                    </ListingStatus>
+                                  )}
+                                </DomainStatusContainer>
+                              </DomainCardHeader>
+                              <DomainCardInfo>
+                                <span>Registered: {formatDate(domain.registration_date)}</span>
+                                <span>Expires: {formatDate(domain.expiration_date)}</span>
+                              </DomainCardInfo>
+                              <DomainActions>
+                                <ActionButton 
+                                  onClick={() => setTransferDomain(domain)}
+                                  disabled={isExpired}
+                                >
+                                  <FaPaperPlane />
+                                  Transfer
+                                </ActionButton>
+                                <ActionButton 
+                                  onClick={() => setListDomain(domain)}
+                                  disabled={isListed || isExpired}
+                                  style={{
+                                    opacity: isListed || isExpired ? 0.6 : 1,
+                                    cursor: isListed || isExpired ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  <FaTag />
+                                  {isListed ? 'Listed' : 'List'}
+                                </ActionButton>
+                              </DomainActions>
+                            </DomainCard>
+                          );
+                        })}
+                      </DomainList>
+                    </DomainViewport>
+                  </DomainsContainer>
                 ) : (
                   <EmptyState>
                     <EmptyStateIcon>
@@ -1122,44 +1334,70 @@ export default function Home() {
 
               {walletConnected ? (
                 transferHistory.length > 0 ? (
-                  <DomainList>
-                    {transferHistory.map((transfer, index) => {
-                      const isSent = transfer.from_address.toLowerCase() === currentAddress?.toLowerCase();
-                      
-                      return (
-                        <DomainCard key={index}>
-                          <DomainCardHeader>
-                          <DomainCardName>{transfer.domains?.name}.ctc</DomainCardName>
-                            <DomainStatus status={transfer.status === 'completed' ? 'active' : 'expired'}>
-                              {isSent ? '📤 Sent' : '📥 Received'}
-                            </DomainStatus>
-                          </DomainCardHeader>
-                          <DomainCardInfo>
-                            <span>
-                              {isSent ? 'To: ' : 'From: '}
-                              {formatAddress(isSent ? transfer.to_address : transfer.from_address)}
-                            </span>
-                            <span>Date: {formatDate(transfer.created_at)}</span>
-                          </DomainCardInfo>
-                          <DomainCardInfo>
-                            <span>Status: {transfer.status}</span>
-                            {transfer.transaction_hash && (
-                              <span>
-                                <a 
-                                  href={`${process.env.NEXT_PUBLIC_CREDIT_EXPLORER_URL || 'https://creditcoin-testnet.blockscout.com'}/tx/${transfer.transaction_hash}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ color: '#3b82f6', textDecoration: 'none' }}
-                                >
-                                  View TX
-                                </a>
-                              </span>
-                            )}
-                          </DomainCardInfo>
-                        </DomainCard>
-                      );
-                    })}
-                  </DomainList>
+                  <DomainsContainer>
+                    <DomainsHeader>
+                      <DomainCounter>
+                        {transferHistory.length} total transfer{transferHistory.length > 1 ? 's' : ''}
+                      </DomainCounter>
+                      {transferHistory.length > 2 && (
+                        <NavigationControls>
+                          <NavButton 
+                            onClick={goToPreviousTransfer}
+                            disabled={currentTransferIndex === 0}
+                          >
+                            <FaChevronUp size={14} />
+                          </NavButton>
+                          <NavButton 
+                            onClick={goToNextTransfer}
+                            disabled={currentTransferIndex >= Math.max(0, transferHistory.length - 2)}
+                          >
+                            <FaChevronDown size={14} />
+                          </NavButton>
+                        </NavigationControls>
+                      )}
+                    </DomainsHeader>
+
+                    <DomainViewport itemCount={transferHistory.length}>
+                      <TransferList currentIndex={currentTransferIndex}>
+                        {transferHistory.map((transfer, index) => {
+                          const isSent = transfer.from_address.toLowerCase() === currentAddress?.toLowerCase();
+                          
+                          return (
+                            <DomainCard key={index}>
+                              <DomainCardHeader>
+                              <DomainCardName>{transfer.domains?.name}.ctc</DomainCardName>
+                                <DomainStatus status={transfer.status === 'completed' ? 'active' : 'expired'}>
+                                  {isSent ? '📤 Sent' : '📥 Received'}
+                                </DomainStatus>
+                              </DomainCardHeader>
+                              <DomainCardInfo>
+                                <span>
+                                  {isSent ? 'To: ' : 'From: '}
+                                  {formatAddress(isSent ? transfer.to_address : transfer.from_address)}
+                                </span>
+                                <span>Date: {formatDate(transfer.created_at)}</span>
+                              </DomainCardInfo>
+                              <DomainCardInfo>
+                                <span>Status: {transfer.status}</span>
+                                {transfer.transaction_hash && (
+                                  <span>
+                                    <a 
+                                      href={`${process.env.NEXT_PUBLIC_CREDIT_EXPLORER_URL || 'https://creditcoin-testnet.blockscout.com'}/tx/${transfer.transaction_hash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: '#3b82f6', textDecoration: 'none' }}
+                                    >
+                                      View TX
+                                    </a>
+                                  </span>
+                                )}
+                              </DomainCardInfo>
+                            </DomainCard>
+                          );
+                        })}
+                      </TransferList>
+                    </DomainViewport>
+                  </DomainsContainer>
                 ) : (
                   <EmptyState>
                     <EmptyStateIcon>
@@ -1177,6 +1415,14 @@ export default function Home() {
                 </EmptyState>
               )}
             </ProfileView>
+          )}
+
+          {activeTab === 'market' && (
+            <SearchView>
+              <div style={{ width: '100%', marginTop: 16 }}>
+                <MarketplaceListings />
+              </div>
+            </SearchView>
           )}
         </GlassCard>
 
@@ -1196,22 +1442,19 @@ export default function Home() {
             <NavText $active={activeTab === 'profile'}>Profile</NavText>
           </NavItem>
           <NavItem
+            $active={activeTab === 'market'}
+            onClick={() => setActiveTab('market')}
+          >
+            <FaTag size={16} />
+            <NavText $active={activeTab === 'market'}>Market</NavText>
+          </NavItem>
+          <NavItem
             $active={activeTab === 'transfers'}
             onClick={() => setActiveTab('transfers')}
           >
             <FaInbox size={16} />
             <NavText $active={activeTab === 'transfers'}>
               History
-              {transferHistory.length > 0 && (
-                <span style={{ 
-                  background: '#ef4444', 
-                  borderRadius: '50%', 
-                  width: '6px', 
-                  height: '6px', 
-                  display: 'inline-block', 
-                  marginLeft: '4px' 
-                }} />
-              )}
             </NavText>
           </NavItem>
         </BottomNavigation>
@@ -1223,8 +1466,17 @@ export default function Home() {
             onClose={() => setTransferDomain(null)}
           />
         )}
-
-        {/* Marketplace view removed */}
+        {listDomain && currentAddress && (
+          <CreateListingModal
+            domain={listDomain}
+            sellerAddress={currentAddress}
+            onClose={() => setListDomain(null)}
+            onListed={() => {
+              loadUserListings();
+              loadUserDomains();
+            }}
+          />
+        )}
 
         <ConfirmationModal
           isOpen={confirmModal.isOpen}

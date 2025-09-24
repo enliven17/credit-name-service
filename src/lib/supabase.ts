@@ -328,6 +328,11 @@ export const domainService = {
     }
 
     try {
+      // Validate inputs to avoid null toLowerCase errors
+      if (!fromAddress || !toAddress) {
+        throw new Error('Invalid transfer addresses')
+      }
+
       // Update domain owner directly
       const { error: domainError } = await supabase
         .from('domains')

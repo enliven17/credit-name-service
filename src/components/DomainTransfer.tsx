@@ -3,7 +3,7 @@
 import styled from 'styled-components';
 import { useState } from 'react';
 import { FaPaperPlane } from 'react-icons/fa';
-import { useWallet } from '@/contexts/WalletContext';
+import { useAccount } from 'wagmi';
 import { domainService, Domain } from '@/lib/supabase';
 import { getCreditContract } from '@/lib/contract';
 
@@ -198,7 +198,7 @@ export const DomainTransfer: React.FC<DomainTransferProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const { address } = useWallet();
+  const { address } = useAccount();
 
   const validateAddress = (addr: string): boolean => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -233,7 +233,13 @@ export const DomainTransfer: React.FC<DomainTransferProps> = ({
       const txHash = await contract.transferDomain(domain.name.replace('.ctc', ''), toAddress);
       transactionHash = txHash;
 
-      await domainService.directDomainTransfer(domain.id, address!, toAddress, transactionHash);
+      console.log('✅ On-chain transfer successful, hash:', txHash);
+      console.log('📝 Updating database with sender:', address, 'recipient:', toAddress);
+
+      if (!address) throw new Error('Sender address is missing');
+      await domainService.directDomainTransfer(domain.id, address, toAddress, transactionHash);
+      
+      console.log('✅ Database updated successfully');
 
       setSuccessMessage('Domain successfully transferred! The domain now appears in the recipient\'s profile.');
       

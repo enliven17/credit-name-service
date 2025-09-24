@@ -124,6 +124,8 @@ export const marketplaceService = {
   },
 
   async getListingsBySeller(sellerAddress: string): Promise<MarketplaceListing[]> {
+    console.log('🔍 Fetching listings for seller:', sellerAddress.toLowerCase());
+    
     const { data, error } = await supabase
       .from('marketplace_listings')
       .select(`
@@ -133,7 +135,14 @@ export const marketplaceService = {
       .eq('seller_address', sellerAddress.toLowerCase())
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    console.log('📊 Marketplace listings query result:', { data, error });
+    
+    if (error) {
+      console.error('❌ Error fetching listings:', error);
+      throw error;
+    }
+    
+    console.log('✅ Found listings:', data?.length || 0);
     return data || [];
   },
 
