@@ -241,6 +241,23 @@ export const DomainTransfer: React.FC<DomainTransferProps> = ({
       
       console.log('✅ Database updated successfully');
 
+      // Update marketplace listing ownership if domain is listed
+      try {
+        const { marketplaceService } = await import('@/lib/marketplace');
+        const listings = await marketplaceService.getListingsByDomain(domain.id);
+        const activeListing = listings.find(listing => listing.status === 'active');
+        
+        if (activeListing) {
+          console.log('📝 Updating marketplace listing ownership...');
+          // Update the listing's seller_address to the new owner
+          await marketplaceService.updateListingOwnership(activeListing.id, toAddress);
+          console.log('✅ Marketplace listing ownership updated');
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to update marketplace listing:', error);
+        // Don't fail the transfer if marketplace update fails
+      }
+
       setSuccessMessage('Domain successfully transferred! The domain now appears in the recipient\'s profile.');
       
       // Close modal after success

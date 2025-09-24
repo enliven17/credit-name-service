@@ -55,9 +55,10 @@ const ResultsHeader = styled.div`
 `;
 
 const ListingsViewport = styled.div<{ itemCount: number }>`
-  height: ${props => Math.min(props.itemCount, 2) * 220}px; /* Dynamic height based on item count */
+  height: ${props => Math.min(props.itemCount, 2) * 220 + 20}px; /* Dynamic height + padding for hover */
   overflow: hidden;
   position: relative;
+  padding-top: 10px; /* Extra space for hover effect */
 `;
 
 const ListingsContainer = styled.div<{ currentIndex: number }>`
@@ -109,11 +110,13 @@ const ListingCard = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  margin-top: 4px; /* Small margin to prevent clipping */
   
   &:hover {
     border-color: rgba(255, 255, 255, 0.2);
     background: rgba(255, 255, 255, 0.12);
-    transform: translateY(-2px);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
   }
 `;
 
@@ -262,10 +265,13 @@ export function MarketplaceListings({ onBuyDomain, onMakeOffer }: MarketplaceLis
         if (!searchTerm.trim()) {
             setFilteredListings(listings);
         } else {
-            const filtered = listings.filter(listing =>
-                listing.domain?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                listing.seller_address.toLowerCase().includes(searchTerm.toLowerCase())
-            );
+            const filtered = listings.filter(listing => {
+                const domainName = listing.domain?.name;
+                const fullDomainName = domainName ? `${domainName}.ctc` : '';
+                return fullDomainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       domainName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       listing.seller_address.toLowerCase().includes(searchTerm.toLowerCase());
+            });
             setFilteredListings(filtered);
         }
         setCurrentListingIndex(0); // Reset index when filtering
@@ -388,7 +394,7 @@ export function MarketplaceListings({ onBuyDomain, onMakeOffer }: MarketplaceLis
                                 <CardHeader>
                                     <DomainName>
                                         <FaEthereum size={18} />
-                                        {listing.domain?.name || 'Unknown Domain'}
+                                        {listing.domain?.name ? `${listing.domain.name}.ctc` : 'Unknown Domain'}
                                     </DomainName>
 
                                     <ListingInfo>

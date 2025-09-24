@@ -153,7 +153,7 @@ const Canvas = styled.canvas`
   z-index: 0;
 `;
 
-const GlassCard = styled.div`
+const GlassCard = styled.div<{ $isVisible?: boolean }>`
   background: rgba(255, 255, 255, 0.1);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(20px) saturate(180%);
@@ -168,10 +168,12 @@ const GlassCard = styled.div`
   align-items: center;
   position: relative;
   z-index: 10;
-  transition: all 0.3s ease;
+  transition: all 0.6s ease;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transform: ${props => props.$isVisible ? 'translateY(0)' : 'translateY(30px)'};
   
   &:hover {
-    transform: translateY(-2px);
+    transform: ${props => props.$isVisible ? 'translateY(-2px)' : 'translateY(30px)'};
     box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.35);
     border: 1px solid rgba(255, 255, 255, 0.3);
   }
@@ -609,6 +611,41 @@ const TransferList = styled.div<{ currentIndex: number }>`
   transition: transform 0.3s ease;
 `;
 
+const LoadingScreen = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+`;
+
+const LoadingSpinner = styled.div`
+  width: 50px;
+  height: 50px;
+  border: 3px solid rgba(34, 197, 94, 0.3);
+  border-top: 3px solid #22c55e;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const LoadingText = styled.div`
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 500;
+`;
+
 const DomainCard = styled.div`
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -758,6 +795,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('search');
   const [currentDomainIndex, setCurrentDomainIndex] = useState(0);
   const [currentTransferIndex, setCurrentTransferIndex] = useState(0);
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [isCardVisible, setIsCardVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [transferDomain, setTransferDomain] = useState<SupabaseDomain | null>(null);
   const [listDomain, setListDomain] = useState<SupabaseDomain | null>(null);
@@ -1034,16 +1073,35 @@ export default function Home() {
     setCurrentTransferIndex(0);
   }, [transferHistory.length]);
 
+  // Page loading effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsPageLoading(false);
+      // Start card animation shortly after loading completes
+      setTimeout(() => {
+        setIsCardVisible(true);
+      }, 100);
+    }, 1500); // 1.5 second loading screen
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleTransferComplete = () => {
     loadUserDomains();
     loadTransferHistory();
     loadUserListings();
+    // Small delay to ensure database updates are complete
+    setTimeout(() => {
+      loadUserListings();
+    }, 1000);
   };
 
   // Marketplace removed
 
   // Canvas animation effect
   useEffect(() => {
+    if (isPageLoading) return; // Don't start animation during loading
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -1094,7 +1152,19 @@ export default function Home() {
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [isPageLoading]);
+
+  if (isPageLoading) {
+    return (
+      <>
+        <GlobalStyle />
+        <LoadingScreen>
+          <LoadingSpinner />
+          <LoadingText>Loading Credit Name Service...</LoadingText>
+        </LoadingScreen>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1102,7 +1172,7 @@ export default function Home() {
       <PageContainer>
         <Canvas ref={canvasRef} />
 
-        <GlassCard>
+        <GlassCard $isVisible={isCardVisible}>
           {devnetIssue && (
             <DevnetBanner>
               <span>

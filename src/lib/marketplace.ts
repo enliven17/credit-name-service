@@ -167,6 +167,31 @@ export const marketplaceService = {
     return data;
   },
 
+  async updateListingOwnership(
+    listingId: string,
+    newOwnerAddress: string
+  ): Promise<MarketplaceListing> {
+    console.log(`Updating listing ${listingId} ownership to ${newOwnerAddress}`);
+    
+    const { data, error } = await supabase
+      .from('marketplace_listings')
+      .update({ 
+        seller_address: newOwnerAddress.toLowerCase(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', listingId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating listing ownership:', error);
+      throw error;
+    }
+    
+    console.log('Listing ownership updated successfully:', data);
+    return data;
+  },
+
   // Offers
   async createOffer(
     listingId: string,
