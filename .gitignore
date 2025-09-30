@@ -63,3 +63,5 @@ Thumbs.db
 
 # supabase local dev folder
 .supabase/
+
+.vercel
