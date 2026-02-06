@@ -11,8 +11,10 @@ import { DomainTransfer } from '@/components/DomainTransfer';
 import CreateListingModal from '@/components/CreateListingModal';
 import { MarketplaceListings } from '@/components/MarketplaceListings';
 import { marketplaceService } from '@/lib/marketplace';
+import { getMarketplaceContract } from '@/lib/marketplaceContract';
 import { useNotification } from '@/components/Notification';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { ethers } from 'ethers';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useDisconnect as useWagmiDisconnect } from 'wagmi';
 
@@ -41,7 +43,7 @@ const useScrambleText = (text: string, duration: number = 2000) => {
 
         // Each character reveals progressively from left to right
         const charProgress = Math.max(0, Math.min(1, (progress * 1.5) - (i / textLength) * 0.5));
-        
+
         if (charProgress >= 0.8) {
           result += text[i];
         } else if (charProgress > 0.2) {
@@ -54,12 +56,12 @@ const useScrambleText = (text: string, duration: number = 2000) => {
             const isUpperCase = text[i] >= 'A' && text[i] <= 'Z';
             const isLowerCase = text[i] >= 'a' && text[i] <= 'z';
             const isNumber = text[i] >= '0' && text[i] <= '9';
-            
+
             let charSet = scrambleChars;
             if (isUpperCase) charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
             else if (isLowerCase) charSet = 'abcdefghijklmnopqrstuvwxyz';
             else if (isNumber) charSet = '0123456789';
-            
+
             result += charSet[Math.floor(Math.random() * charSet.length)];
           }
         } else {
@@ -84,10 +86,10 @@ const useScrambleText = (text: string, duration: number = 2000) => {
 };
 
 // Scramble Text Component
-const ScrambleText: React.FC<{ text: string; delay?: number; duration?: number }> = ({ 
-  text, 
-  delay = 500, 
-  duration = 2000 
+const ScrambleText: React.FC<{ text: string; delay?: number; duration?: number }> = ({
+  text,
+  delay = 500,
+  duration = 2000
 }) => {
   const { displayText, startAnimation } = useScrambleText(text, duration);
   const [hasStarted, setHasStarted] = useState(false);
@@ -114,8 +116,8 @@ const ScrambleText: React.FC<{ text: string; delay?: number; duration?: number }
   }, [delay, startAnimation, hasStarted]);
 
   return (
-    <span style={{ 
-      opacity, 
+    <span style={{
+      opacity,
       transition: 'opacity 0.5s ease-in-out',
       display: 'inline-block',
       whiteSpace: 'pre-wrap'
@@ -810,7 +812,7 @@ export default function Home() {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {}
+    onConfirm: () => { }
   });
   const [devnetIssue, setDevnetIssue] = useState(false);
 
@@ -850,25 +852,25 @@ export default function Home() {
   // Domain search function
   const searchDomain = async (): Promise<void> => {
     const trimmedQuery = searchQuery.trim();
-    
+
     if (!trimmedQuery) return;
-    
+
     // Clear previous error
     setErrorMessage('');
-    
+
     // Check minimum length
     if (trimmedQuery.length < 3) {
       setErrorMessage('Domain name must be at least 3 characters long');
       return;
     }
-    
+
     // Check for valid characters (alphanumeric and hyphens)
     const validPattern = /^[a-zA-Z0-9-]+$/;
     if (!validPattern.test(trimmedQuery)) {
       setErrorMessage('Domain name can only contain letters, numbers, and hyphens');
       return;
     }
-    
+
     // Check if starts or ends with hyphen
     if (trimmedQuery.startsWith('-') || trimmedQuery.endsWith('-')) {
       setErrorMessage('Domain name cannot start or end with a hyphen');
@@ -885,10 +887,10 @@ export default function Home() {
       } catch (error) {
         console.warn('⚠️ Database check failed:', error);
       }
-      
+
       // Domain availability is determined solely by database
       const isAvailable = databaseAvailable;
-      
+
       setSearchResult({
         name: trimmedQuery.toLowerCase(),
         available: isAvailable,
@@ -913,25 +915,25 @@ export default function Home() {
       message: `You are about to register "${searchResult.name}.ctc" for 1000 tCTC (1 year). This transaction cannot be undone.`,
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        
+
         setIsRegistering(true);
         try {
           let transactionHash = '';
-          
+
           // Register on-chain (REQUIRED - no fallback)
           if (!window.ethereum) {
             throw new Error('No wallet connected. Please connect your wallet to register domains.');
           }
-          
+
           console.log('🔗 Starting on-chain registration...');
           console.log('💰 This will cost 1000 tCTC + gas fees');
-          
+
           const contract = getCreditContract(window.ethereum);
-          
+
           transactionHash = await contract.registerDomain(searchResult.name);
-          
+
           console.log('✅ Transaction submitted:', transactionHash);
-          
+
           console.log('✅ On-chain registration successful:', transactionHash);
 
           // Only proceed if transaction was actually confirmed
@@ -952,7 +954,7 @@ export default function Home() {
           setUserDomains(prev => [...prev, displayDomain]);
           setSearchResult(null);
           setSearchQuery('');
-          
+
           // Success notification - only after confirmation
           showSuccess(
             'Domain Registered Successfully!',
@@ -977,13 +979,13 @@ export default function Home() {
 
     try {
       const domains = await domainService.getDomainsByOwner(currentAddress);
-      
+
       // Add .ctc extension for display
       const displayDomains = domains.map(domain => ({
         ...domain,
         name: domain.name + '.ctc'
       }));
-      
+
       setUserDomains(displayDomains);
     } catch (error) {
       console.error('Failed to load user domains:', error);
@@ -1027,19 +1029,19 @@ export default function Home() {
   const isDomainListed = (domainName: string) => {
     console.log('Checking if domain is listed:', domainName);
     console.log('User listings:', userListings);
-    
+
     const isListed = userListings.some(listing => {
       const listingDomainName = listing.domain?.name;
       console.log('Comparing:', domainName, 'with', listingDomainName, 'status:', listing.status);
-      
+
       // Remove .ctc extension from domainName for comparison
       const cleanDomainName = domainName.replace('.ctc', '');
       const cleanListingName = listingDomainName?.replace('.ctc', '');
-      
-      return (cleanListingName === cleanDomainName || listingDomainName === domainName) && 
-             listing.status === 'active';
+
+      return (cleanListingName === cleanDomainName || listingDomainName === domainName) &&
+        listing.status === 'active';
     });
-    
+
     console.log('Is listed result:', isListed);
     return isListed;
   };
@@ -1096,12 +1098,81 @@ export default function Home() {
     }, 1000);
   };
 
-  // Marketplace removed
+  // Marketplace handlers
+  const handleBuyDomain = async (listing: any) => {
+    if (!walletConnected || !currentAddress) {
+      showError('Wallet not connected', 'Please connect your wallet to buy domains.');
+      return;
+    }
+
+    if (listing.seller_address.toLowerCase() === currentAddress.toLowerCase()) {
+      showError('Invalid Action', 'You cannot buy your own domain.');
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirm Purchase',
+      message: `Are you sure you want to buy ${listing.domain?.name}.ctc for ${listing.price} CTC?`,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setIsPageLoading(true);
+
+        try {
+          if (!window.ethereum) throw new Error('Ethereum provider not found');
+
+          const mkt = getMarketplaceContract(window.ethereum);
+          const priceWei = ethers.parseEther(listing.price);
+
+          showWarning('Processing', 'Please confirm the transaction in your wallet...');
+
+          // 1. On-chain buy
+          const txHash = await mkt.buy(listing.domain?.name.replace('.ctc', ''), priceWei);
+
+          console.log('✅ Purchase on-chain success:', txHash);
+
+          // 2. Update Listing Status to 'sold'
+          await marketplaceService.updateListingStatus(listing.id, 'sold', txHash);
+
+          // 3. Record Sale for history
+          await marketplaceService.recordSale(
+            listing.domain_id,
+            listing.seller_address,
+            currentAddress,
+            listing.price,
+            'direct_sale',
+            txHash,
+            listing.id
+          );
+
+          // 4. Update domain owner in database
+          await domainService.directDomainTransfer(
+            listing.domain_id,
+            listing.seller_address,
+            currentAddress,
+            txHash
+          );
+
+          showSuccess('Purchase Successful!', `${listing.domain?.name}.ctc is now yours.`);
+
+          // Refresh data
+          loadUserDomains();
+          loadUserListings();
+          loadTransferHistory();
+        } catch (error: any) {
+          console.error('Purchase failed:', error);
+          showError('Purchase Failed', error.message || 'An error occurred during purchase.');
+        } finally {
+          setIsPageLoading(false);
+        }
+      }
+    });
+  };
 
   // Canvas animation effect
   useEffect(() => {
     if (isPageLoading) return; // Don't start animation during loading
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -1199,8 +1270,8 @@ export default function Home() {
                 Credit Name Service
               </Title>
               <Subtitle>
-                <ScrambleText 
-                  text="Get your own domain on Credit Testnet" 
+                <ScrambleText
+                  text="Get your own domain on Credit Testnet"
                   delay={800}
                   duration={2500}
                 />
@@ -1288,7 +1359,7 @@ export default function Home() {
               {!walletConnected && null}
 
               {walletConnected && (
-                <DisconnectButton onClick={() => { try { wagmiDisconnect?.(); } catch (e) {} try { disconnect(); } catch (e) {} }}>
+                <DisconnectButton onClick={() => { try { wagmiDisconnect?.(); } catch (e) { } try { disconnect(); } catch (e) { } }}>
                   <FaSignOutAlt />
                   Disconnect ({formatAddress(currentAddress || '')})
                 </DisconnectButton>
@@ -1310,13 +1381,13 @@ export default function Home() {
                       </DomainCounter>
                       {userDomains.length > 2 && (
                         <NavigationControls>
-                          <NavButton 
+                          <NavButton
                             onClick={goToPreviousDomain}
                             disabled={currentDomainIndex === 0}
                           >
                             <FaChevronUp size={14} />
                           </NavButton>
-                          <NavButton 
+                          <NavButton
                             onClick={goToNextDomain}
                             disabled={currentDomainIndex >= Math.max(0, userDomains.length - 2)}
                           >
@@ -1331,7 +1402,7 @@ export default function Home() {
                         {userDomains.map((domain, index) => {
                           const isListed = isDomainListed(domain.name);
                           const isExpired = new Date(domain.expiration_date) <= new Date();
-                          
+
                           return (
                             <DomainCard key={index}>
                               <DomainCardHeader>
@@ -1353,14 +1424,14 @@ export default function Home() {
                                 <span>Expires: {formatDate(domain.expiration_date)}</span>
                               </DomainCardInfo>
                               <DomainActions>
-                                <ActionButton 
+                                <ActionButton
                                   onClick={() => setTransferDomain(domain)}
                                   disabled={isExpired}
                                 >
                                   <FaPaperPlane />
                                   Transfer
                                 </ActionButton>
-                                <ActionButton 
+                                <ActionButton
                                   onClick={() => setListDomain(domain)}
                                   disabled={isListed || isExpired}
                                   style={{
@@ -1411,13 +1482,13 @@ export default function Home() {
                       </DomainCounter>
                       {transferHistory.length > 2 && (
                         <NavigationControls>
-                          <NavButton 
+                          <NavButton
                             onClick={goToPreviousTransfer}
                             disabled={currentTransferIndex === 0}
                           >
                             <FaChevronUp size={14} />
                           </NavButton>
-                          <NavButton 
+                          <NavButton
                             onClick={goToNextTransfer}
                             disabled={currentTransferIndex >= Math.max(0, transferHistory.length - 2)}
                           >
@@ -1431,11 +1502,11 @@ export default function Home() {
                       <TransferList currentIndex={currentTransferIndex}>
                         {transferHistory.map((transfer, index) => {
                           const isSent = transfer.from_address.toLowerCase() === currentAddress?.toLowerCase();
-                          
+
                           return (
                             <DomainCard key={index}>
                               <DomainCardHeader>
-                              <DomainCardName>{transfer.domains?.name}.ctc</DomainCardName>
+                                <DomainCardName>{transfer.domains?.name}.ctc</DomainCardName>
                                 <DomainStatus status={transfer.status === 'completed' ? 'active' : 'expired'}>
                                   {isSent ? '📤 Sent' : '📥 Received'}
                                 </DomainStatus>
@@ -1451,7 +1522,7 @@ export default function Home() {
                                 <span>Status: {transfer.status}</span>
                                 {transfer.transaction_hash && (
                                   <span>
-                                    <a 
+                                    <a
                                       href={`${process.env.NEXT_PUBLIC_CREDIT_EXPLORER_URL || 'https://creditcoin-testnet.blockscout.com'}/tx/${transfer.transaction_hash}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
@@ -1490,7 +1561,10 @@ export default function Home() {
           {activeTab === 'market' && (
             <SearchView>
               <div style={{ width: '100%', marginTop: 16 }}>
-                <MarketplaceListings />
+                <MarketplaceListings
+                  onBuyDomain={handleBuyDomain}
+                  onMakeOffer={(listing) => showWarning('Coming Soon', 'Offers and auctions are coming soon!')}
+                />
               </div>
             </SearchView>
           )}
@@ -1528,7 +1602,7 @@ export default function Home() {
             </NavText>
           </NavItem>
         </BottomNavigation>
-        
+
         {transferDomain && (
           <DomainTransfer
             domain={transferDomain}

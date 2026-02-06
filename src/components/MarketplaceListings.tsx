@@ -55,19 +55,31 @@ const ResultsHeader = styled.div`
 `;
 
 const ListingsViewport = styled.div<{ itemCount: number }>`
-  height: ${props => Math.min(props.itemCount, 2) * 220 + 20}px; /* Dynamic height + padding for hover */
-  overflow: hidden;
+  height: ${props => Math.min(props.itemCount, 2) * 260 + 20}px; /* Increased height for cards */
+  overflow-y: auto; /* Allow scrolling within viewport if needed */
   position: relative;
-  padding-top: 10px; /* Extra space for hover effect */
+  padding: 10px;
+  
+  /* Custom scrollbar for premium look */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(34, 197, 94, 0.3);
+    border-radius: 10px;
+  }
 `;
 
-const ListingsContainer = styled.div<{ currentIndex: number }>`
+const ListingsContainer = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: 20px;
   padding: 0;
-  transform: translateY(${props => -props.currentIndex * 220}px);
-  transition: transform 0.3s ease;
+  transition: all 0.3s ease;
 `;
 
 const NavigationControls = styled.div`
@@ -103,14 +115,13 @@ const NavButton = styled.button<{ disabled?: boolean }>`
 const ListingCard = styled.div`
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 16px;
-  transition: all 0.3s ease;
-  height: 200px;
+  border-radius: 20px;
+  padding: 20px;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  min-height: 240px; /* Increased from 200px */
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  margin-top: 4px; /* Small margin to prevent clipping */
   
   &:hover {
     border-color: rgba(255, 255, 255, 0.2);
@@ -269,8 +280,8 @@ export function MarketplaceListings({ onBuyDomain, onMakeOffer }: MarketplaceLis
                 const domainName = listing.domain?.name;
                 const fullDomainName = domainName ? `${domainName}.ctc` : '';
                 return fullDomainName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       domainName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       listing.seller_address.toLowerCase().includes(searchTerm.toLowerCase());
+                    domainName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    listing.seller_address.toLowerCase().includes(searchTerm.toLowerCase());
             });
             setFilteredListings(filtered);
         }
@@ -388,7 +399,7 @@ export function MarketplaceListings({ onBuyDomain, onMakeOffer }: MarketplaceLis
                 </ListingsContainer>
             ) : (
                 <ListingsViewport itemCount={filteredListings.length}>
-                    <ListingsContainer currentIndex={currentListingIndex}>
+                    <ListingsContainer>
                         {filteredListings.map((listing) => (
                             <ListingCard key={listing.id}>
                                 <CardHeader>
